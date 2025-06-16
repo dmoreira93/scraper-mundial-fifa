@@ -1,4 +1,4 @@
-# update_supabase.py (VERSÃO FINAL COM CÁLCULO DE PONTOS)
+# update_supabase.py (VERSÃO FINAL 2.0 - COM LÓGICA DE STATUS CORRIGIDA)
 
 import os
 import time
@@ -52,7 +52,7 @@ def obter_jogos_do_site():
                 time_casa = time_casa_el.get_text(strip=True)
                 time_fora = time_fora_el.get_text(strip=True)
                 
-                placar_casa, placar_fora, status = '-', '-', 'Não iniciado'
+                placar_casa, placar_fora, status = '-', '-', 'Não definido'
 
                 placar_el = card.find('div', class_='match__md_card--scoreboard')
                 if placar_el:
@@ -61,15 +61,20 @@ def obter_jogos_do_site():
                         placar_casa = scores[0].get_text(strip=True)
                         placar_fora = scores[1].get_text(strip=True)
                 
+                # --- LÓGICA DE STATUS CORRIGIDA E MAIS RESTRITA ---
                 status_el = card.find('div', class_='match__md_card--status')
+                live_el = card.find('div', class_='match__md_card--live') # Verificando o container 'live'
+                
+                # A partida SÓ é "Encerrado" se a palavra "encerrado" estiver presente
                 if status_el and 'encerrado' in status_el.get_text(strip=True).lower():
                     status = 'Encerrado'
-                elif placar_casa.isdigit():
-                    status = 'Encerrado'
-                
-                if status == 'Encerrado':
                     placar_casa = int(placar_casa)
                     placar_fora = int(placar_fora)
+                elif live_el:
+                    status = 'Ao Vivo'
+                else:
+                    status = 'Não iniciado'
+                # ---------------------------------------------------
 
                 lista_jogos.append({
                     'mandante': time_casa,
@@ -118,6 +123,7 @@ def atualizar_plataforma():
 
     partidas_para_atualizar = []
     for jogo in jogos_raspados:
+        # A lógica principal agora só depende do status 'Encerrado'
         if jogo['status'] == 'Encerrado':
             mandante = jogo['mandante']
             visitante = jogo['visitante']
@@ -137,7 +143,7 @@ def atualizar_plataforma():
         print("\nNenhuma partida encerrada para atualizar no momento.")
         return
 
-    print(f"\n-> {len(partidas_para_atualizar)} partidas com resultado para processar...")
+    print(f"\n-> Encontradas {len(partidas_para_atualizar)} partidas com resultado para processar...")
     for partida in partidas_para_atualizar:
         try:
             res = supabase.table('matches').update({
@@ -150,21 +156,18 @@ def atualizar_plataforma():
                 'is_finished': False
             }).execute()
             
-            # Se a atualização teve sucesso e alguma linha foi alterada...
             if len(res.data) > 0:
-                match_id = res.data[0]['id'] # Pega o ID da partida atualizada
+                match_id = res.data[0]['id']
                 print(f"  - Resultado da partida ID {match_id} atualizado. Disparando cálculo de pontos...")
                 
-                # --- !! ALTERAÇÃO PRINCIPAL !! ---
-                # Agora, chamamos a função SQL para calcular os pontos de todos os usuários para esta partida.
                 rpc_res = supabase.rpc('update_user_points_for_match', {'match_id_param': match_id}).execute()
                 if rpc_res.error:
-                    raise rpc_res.error # Lança o erro se a função RPC falhar
+                    raise rpc_res.error
 
                 print(f"  - Pontos para a partida ID {match_id} calculados com sucesso!")
 
         except Exception as e:
-            print(f"Erro no processamento da partida {partida['home_team_id']} vs {partida['away_team_id']}: {e}")
+            print(f"Erro no processamento da partida: {e}")
 
     print("\nProcesso de atualização finalizado!")
 
