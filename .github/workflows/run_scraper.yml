@@ -8,8 +8,8 @@ on:
   
   # Define o agendamento (cron job)
   schedule:
-    # Roda a cada 6 horas. (Minuto 0, a cada 6 horas, todos os dias)
-    - cron: '0 */6 * * *'
+    # Roda a cada 1 horas. (Minuto 0, a cada 1 horas, todos os dias)
+    - cron: '0 */1 * * *'
 
 # Define os passos da automação
 jobs:
