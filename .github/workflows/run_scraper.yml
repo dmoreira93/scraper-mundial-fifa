@@ -1,0 +1,41 @@
+# Nome da sua automação
+name: Run Mundial Scraper
+
+# Define quando a automação deve rodar
+on:
+  # Permite que você rode manualmente pela aba "Actions" do GitHub
+  workflow_dispatch:
+  
+  # Define o agendamento (cron job)
+  schedule:
+    # Roda a cada 6 horas. (Minuto 0, a cada 6 horas, todos os dias)
+    - cron: '0 */6 * * *'
+
+# Define os passos da automação
+jobs:
+  build-and-run:
+    # Usa a versão mais recente do Ubuntu como sistema operacional do servidor
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Baixa o código do seu repositório para o servidor
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Configura o ambiente Python
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11' # Pode usar a versão do Python que preferir
+
+      # 3. Instala as dependências do seu arquivo requirements.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # 4. Roda o seu script Python principal
+      - name: Run Scraper and Update Supabase
+        # Passa as chaves secretas como variáveis de ambiente para o script
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python update_supabase.py
