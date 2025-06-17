@@ -1,17 +1,16 @@
 # Nome da sua automação
 name: Run Mundial Scraper
 
-# Define quando a automação deve rodar
 on:
   # Permite que você rode manualmente pela aba "Actions" do GitHub
   workflow_dispatch:
   
   # Define o agendamento (cron job)
   schedule:
-    # Roda a cada 1 horas. (Minuto 0, a cada 1 horas, todos os dias)
-    - cron: '0 */1 * * *'
+    # Roda a cada 1 hora no horário de Brasília (UTC-3)
+    - cron: '0 3-23/1 * * *'
+    - cron: '0 0-2/1 * * *'
 
-# Define os passos da automação
 jobs:
   build-and-run:
     # Usa a versão mais recente do Ubuntu como sistema operacional do servidor
@@ -38,4 +37,4 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-        run: python scraping_mundial.py #
+        run: python scraping_mundial.py
