@@ -1,4 +1,4 @@
-# update_supabase.py (VERSÃO FINAL 2.0 - COM LÓGICA DE STATUS CORRIGIDA)
+# update_supabase.py (VERSÃO FINAL 2.1 - Lógica de Status Robusta)
 
 import os
 import time
@@ -23,9 +23,7 @@ def obter_jogos_do_site():
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")
-    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    chrome_options.add_experimental_option('useAutomationExtension', False)
     
     driver = None
     try:
@@ -40,7 +38,7 @@ def obter_jogos_do_site():
         main_container = soup.find('div', id='main')
         cards_jogos = main_container.find_all('a', class_='match__md') if main_container else []
 
-        print(f"-> {len(cards_jogos)} cards de jogos encontrados.")
+        print(f"-> {len(cards_jogos)} cards de jogos encontrados. Processando...")
 
         for card in cards_jogos:
             try:
@@ -61,20 +59,27 @@ def obter_jogos_do_site():
                         placar_casa = scores[0].get_text(strip=True)
                         placar_fora = scores[1].get_text(strip=True)
                 
-                # --- LÓGICA DE STATUS CORRIGIDA E MAIS RESTRITA ---
+                # --- NOVA LÓGICA DE STATUS EM CAMADAS ---
                 status_el = card.find('div', class_='match__md_card--status')
-                live_el = card.find('div', class_='match__md_card--live') # Verificando o container 'live'
-                
-                # A partida SÓ é "Encerrado" se a palavra "encerrado" estiver presente
+                live_el = card.find('div', class_='match__md_card--live')
+                datetime_el = card.find('div', class_='match__md_card--datetime')
+
                 if status_el and 'encerrado' in status_el.get_text(strip=True).lower():
                     status = 'Encerrado'
-                    placar_casa = int(placar_casa)
-                    placar_fora = int(placar_fora)
                 elif live_el:
                     status = 'Ao Vivo'
+                elif datetime_el:
+                    status = 'Não iniciado'
+                elif placar_casa.isdigit() and placar_fora.isdigit():
+                    # Fallback para jogos passados sem a tag "encerrado"
+                    status = 'Encerrado'
                 else:
                     status = 'Não iniciado'
-                # ---------------------------------------------------
+                # --- FIM DA NOVA LÓGICA ---
+
+                if status == 'Encerrado':
+                    placar_casa = int(placar_casa)
+                    placar_fora = int(placar_fora)
 
                 lista_jogos.append({
                     'mandante': time_casa,
@@ -123,7 +128,6 @@ def atualizar_plataforma():
 
     partidas_para_atualizar = []
     for jogo in jogos_raspados:
-        # A lógica principal agora só depende do status 'Encerrado'
         if jogo['status'] == 'Encerrado':
             mandante = jogo['mandante']
             visitante = jogo['visitante']
@@ -165,7 +169,6 @@ def atualizar_plataforma():
                     raise rpc_res.error
 
                 print(f"  - Pontos para a partida ID {match_id} calculados com sucesso!")
-
         except Exception as e:
             print(f"Erro no processamento da partida: {e}")
 
