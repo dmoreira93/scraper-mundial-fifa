@@ -1,4 +1,4 @@
-# update_supabase.py (VERSÃO FINAL 2.1 - Lógica de Status Robusta)
+# update_supabase.py (VERSÃO FINAL 2.2 - Lógica de Status Robusta e Corrigida)
 
 import os
 import time
@@ -59,23 +59,33 @@ def obter_jogos_do_site():
                         placar_casa = scores[0].get_text(strip=True)
                         placar_fora = scores[1].get_text(strip=True)
                 
-                # --- NOVA LÓGICA DE STATUS EM CAMADAS ---
+                # --- INÍCIO DA LÓGICA ATUALIZADA ---
                 status_el = card.find('div', class_='match__md_card--status')
                 live_el = card.find('div', class_='match__md_card--live')
                 datetime_el = card.find('div', class_='match__md_card--datetime')
 
-                if status_el and 'encerrado' in status_el.get_text(strip=True).lower():
+                # Pega o texto do status uma vez e normaliza (minúsculas, sem espaços extras)
+                status_text = ""
+                if status_el:
+                    status_text = status_el.get_text(strip=True).lower()
+
+                # Lista de termos que confirmam que o jogo acabou
+                TEXTOS_DE_JOGO_FINALIZADO = ['encerrado', 'fim de jogo', 'pên.']
+
+                # Verifica o status em uma ordem de prioridade clara
+                if any(termo in status_text for termo in TEXTOS_DE_JOGO_FINALIZADO):
                     status = 'Encerrado'
+                elif 'intervalo' in status_text:
+                    status = 'Intervalo'
                 elif live_el:
                     status = 'Ao Vivo'
                 elif datetime_el:
                     status = 'Não iniciado'
-                elif placar_casa.isdigit() and placar_fora.isdigit():
-                    # Fallback para jogos passados sem a tag "encerrado"
-                    status = 'Encerrado'
+                # O fallback arriscado foi REMOVIDO para evitar erros como o que aconteceu.
+                # Um jogo só será considerado "Encerrado" se contiver um dos textos da lista.
                 else:
-                    status = 'Não iniciado'
-                # --- FIM DA NOVA LÓGICA ---
+                    status = 'Não definido'
+                # --- FIM DA LÓGICA ATUALIZADA ---
 
                 if status == 'Encerrado':
                     placar_casa = int(placar_casa)
@@ -128,6 +138,7 @@ def atualizar_plataforma():
 
     partidas_para_atualizar = []
     for jogo in jogos_raspados:
+        # A condição de filtro aqui permanece a mesma, pois a lógica de status já foi refinada acima.
         if jogo['status'] == 'Encerrado':
             mandante = jogo['mandante']
             visitante = jogo['visitante']
@@ -162,13 +173,13 @@ def atualizar_plataforma():
             
             if len(res.data) > 0:
                 match_id = res.data[0]['id']
-                print(f"  - Resultado da partida ID {match_id} atualizado. Disparando cálculo de pontos...")
+                print(f"   - Resultado da partida ID {match_id} atualizado. Disparando cálculo de pontos...")
                 
                 rpc_res = supabase.rpc('update_user_points_for_match', {'match_id_param': match_id}).execute()
                 if rpc_res.error:
                     raise rpc_res.error
 
-                print(f"  - Pontos para a partida ID {match_id} calculados com sucesso!")
+                print(f"   - Pontos para a partida ID {match_id} calculados com sucesso!")
         except Exception as e:
             print(f"Erro no processamento da partida: {e}")
 
