@@ -1,4 +1,4 @@
-# update_supabase.py (VERSÃO FINAL 2.2 - Lógica de Status Robusta e Corrigida)
+# update_supabase.py (VERSÃO FINAL 2.4 - Lógica com Status "Suspenso")
 
 import os
 import time
@@ -50,46 +50,55 @@ def obter_jogos_do_site():
                 time_casa = time_casa_el.get_text(strip=True)
                 time_fora = time_fora_el.get_text(strip=True)
                 
-                placar_casa, placar_fora, status = '-', '-', 'Não definido'
+                placar_casa, placar_fora = '-', '-'
 
-                placar_el = card.find('div', class_='match__md_card--scoreboard')
-                if placar_el:
-                    scores = placar_el.find_all('b')
-                    if len(scores) >= 2:
-                        placar_casa = scores[0].get_text(strip=True)
-                        placar_fora = scores[1].get_text(strip=True)
+                # --- INÍCIO DA LÓGICA DE STATUS ATUALIZADA (v2.4) ---
                 
-                # --- INÍCIO DA LÓGICA ATUALIZADA ---
+                # 1. Pega todos os elementos relevantes
+                placar_el = card.find('div', class_='match__md_card--scoreboard')
                 status_el = card.find('div', class_='match__md_card--status')
                 live_el = card.find('div', class_='match__md_card--live')
                 datetime_el = card.find('div', class_='match__md_card--datetime')
 
-                # Pega o texto do status uma vez e normaliza (minúsculas, sem espaços extras)
                 status_text = ""
                 if status_el:
                     status_text = status_el.get_text(strip=True).lower()
 
-                # Lista de termos que confirmam que o jogo acabou
+                # 2. Define o status baseado em uma hierarquia de verificação
                 TEXTOS_DE_JOGO_FINALIZADO = ['encerrado', 'fim de jogo', 'pên.']
-
-                # Verifica o status em uma ordem de prioridade clara
-                if any(termo in status_text for termo in TEXTOS_DE_JOGO_FINALIZADO):
+                
+                # Prioridade 1: Status explícito de "Suspenso"
+                if 'suspenso' in status_text:
+                    status = 'Suspenso'
+                # Prioridade 2: Status explícito de "Finalizado"
+                elif any(termo in status_text for termo in TEXTOS_DE_JOGO_FINALIZADO):
                     status = 'Encerrado'
+                # Prioridade 3: Status de "Ao Vivo" ou "Intervalo"
                 elif 'intervalo' in status_text:
                     status = 'Intervalo'
                 elif live_el:
                     status = 'Ao Vivo'
+                # Prioridade 4 (Correção principal): Se existe placar, mas não há status explícito, o jogo acabou.
+                elif placar_el:
+                    status = 'Encerrado'
+                # Prioridade 5: Se tem data/hora, não começou
                 elif datetime_el:
                     status = 'Não iniciado'
-                # O fallback arriscado foi REMOVIDO para evitar erros como o que aconteceu.
-                # Um jogo só será considerado "Encerrado" se contiver um dos textos da lista.
+                # Fallback
                 else:
                     status = 'Não definido'
-                # --- FIM DA LÓGICA ATUALIZADA ---
 
-                if status == 'Encerrado':
-                    placar_casa = int(placar_casa)
-                    placar_fora = int(placar_fora)
+                # 3. Processa o placar APENAS se o jogo foi classificado como Encerrado
+                if status == 'Encerrado' and placar_el:
+                    scores = placar_el.find_all('b')
+                    if len(scores) >= 2:
+                        try:
+                            placar_casa = int(scores[0].get_text(strip=True))
+                            placar_fora = int(scores[1].get_text(strip=True))
+                        except (ValueError, TypeError):
+                            placar_casa = scores[0].get_text(strip=True)
+                            placar_fora = scores[1].get_text(strip=True)
+                # --- FIM DA LÓGICA ATUALIZADA ---
 
                 lista_jogos.append({
                     'mandante': time_casa,
@@ -107,6 +116,11 @@ def obter_jogos_do_site():
         if driver:
             driver.quit()
         print("-> Scraper finalizado.")
+
+# ... (o resto do seu código, incluindo atualizar_plataforma(), permanece igual) ...
+
+if __name__ == "__main__":
+    atualizar_plataforma()
 
 def atualizar_plataforma():
     url: str = os.environ.get("SUPABASE_URL")
