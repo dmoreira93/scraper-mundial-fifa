@@ -118,10 +118,6 @@ def obter_jogos_do_site():
         print("-> Scraper finalizado.")
 
 # ... (o resto do seu código, incluindo atualizar_plataforma(), permanece igual) ...
-
-if __name__ == "__main__":
-    atualizar_plataforma()
-
 def atualizar_plataforma():
     url: str = os.environ.get("SUPABASE_URL")
     key: str = os.environ.get("SUPABASE_SERVICE_KEY")
