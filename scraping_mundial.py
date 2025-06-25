@@ -1,4 +1,4 @@
-# update_supabase.py (VERSÃO FINAL 2.4 - Lógica com Status "Suspenso")
+# update_supabase.py (VERSÃO FINAL 2.4 - Estrutura Corrigida)
 
 import os
 import time
@@ -12,11 +12,16 @@ from selenium.webdriver.support import expected_conditions as EC
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
+# Carrega as variáveis de ambiente do arquivo .env
 load_dotenv()
 
 URL_SCRAPER = 'https://www.placardefutebol.com.br/mundial-clubes-fifa'
 
 def obter_jogos_do_site():
+    """
+    Função principal de scraping. Navega até o site, extrai os dados dos jogos
+    e retorna uma lista de dicionários com as informações de cada partida.
+    """
     print("-> Iniciando o scraper para buscar jogos...")
     chrome_options = Options()
     chrome_options.add_argument("--headless")
@@ -52,43 +57,32 @@ def obter_jogos_do_site():
                 
                 placar_casa, placar_fora = '-', '-'
 
-                # --- INÍCIO DA LÓGICA DE STATUS ATUALIZADA (v2.4) ---
+                # --- LÓGICA DE STATUS HIERÁRQUICA (v2.4) ---
                 
-                # 1. Pega todos os elementos relevantes
                 placar_el = card.find('div', class_='match__md_card--scoreboard')
                 status_el = card.find('div', class_='match__md_card--status')
                 live_el = card.find('div', class_='match__md_card--live')
                 datetime_el = card.find('div', class_='match__md_card--datetime')
 
-                status_text = ""
-                if status_el:
-                    status_text = status_el.get_text(strip=True).lower()
+                status_text = status_el.get_text(strip=True).lower() if status_el else ""
 
-                # 2. Define o status baseado em uma hierarquia de verificação
                 TEXTOS_DE_JOGO_FINALIZADO = ['encerrado', 'fim de jogo', 'pên.']
                 
-                # Prioridade 1: Status explícito de "Suspenso"
                 if 'suspenso' in status_text:
                     status = 'Suspenso'
-                # Prioridade 2: Status explícito de "Finalizado"
                 elif any(termo in status_text for termo in TEXTOS_DE_JOGO_FINALIZADO):
                     status = 'Encerrado'
-                # Prioridade 3: Status de "Ao Vivo" ou "Intervalo"
                 elif 'intervalo' in status_text:
                     status = 'Intervalo'
                 elif live_el:
                     status = 'Ao Vivo'
-                # Prioridade 4 (Correção principal): Se existe placar, mas não há status explícito, o jogo acabou.
                 elif placar_el:
                     status = 'Encerrado'
-                # Prioridade 5: Se tem data/hora, não começou
                 elif datetime_el:
                     status = 'Não iniciado'
-                # Fallback
                 else:
                     status = 'Não definido'
 
-                # 3. Processa o placar APENAS se o jogo foi classificado como Encerrado
                 if status == 'Encerrado' and placar_el:
                     scores = placar_el.find_all('b')
                     if len(scores) >= 2:
@@ -98,8 +92,7 @@ def obter_jogos_do_site():
                         except (ValueError, TypeError):
                             placar_casa = scores[0].get_text(strip=True)
                             placar_fora = scores[1].get_text(strip=True)
-                # --- FIM DA LÓGICA ATUALIZADA ---
-
+                
                 lista_jogos.append({
                     'mandante': time_casa,
                     'visitante': time_fora,
@@ -117,8 +110,11 @@ def obter_jogos_do_site():
             driver.quit()
         print("-> Scraper finalizado.")
 
-# ... (o resto do seu código, incluindo atualizar_plataforma(), permanece igual) ...
 def atualizar_plataforma():
+    """
+    Orquestra todo o processo: busca os jogos do site, conecta ao Supabase,
+    e atualiza as partidas que foram finalizadas.
+    """
     url: str = os.environ.get("SUPABASE_URL")
     key: str = os.environ.get("SUPABASE_SERVICE_KEY")
     
@@ -148,7 +144,6 @@ def atualizar_plataforma():
 
     partidas_para_atualizar = []
     for jogo in jogos_raspados:
-        # A condição de filtro aqui permanece a mesma, pois a lógica de status já foi refinada acima.
         if jogo['status'] == 'Encerrado':
             mandante = jogo['mandante']
             visitante = jogo['visitante']
@@ -183,17 +178,19 @@ def atualizar_plataforma():
             
             if len(res.data) > 0:
                 match_id = res.data[0]['id']
-                print(f"   - Resultado da partida ID {match_id} atualizado. Disparando cálculo de pontos...")
+                print(f"  - Resultado da partida ID {match_id} atualizado. Disparando cálculo de pontos...")
                 
                 rpc_res = supabase.rpc('update_user_points_for_match', {'match_id_param': match_id}).execute()
                 if rpc_res.error:
                     raise rpc_res.error
 
-                print(f"   - Pontos para a partida ID {match_id} calculados com sucesso!")
+                print(f"  - Pontos para a partida ID {match_id} calculados com sucesso!")
         except Exception as e:
             print(f"Erro no processamento da partida: {e}")
 
     print("\nProcesso de atualização finalizado!")
 
+# Ponto de entrada do script: garante que o código só será executado quando
+# o arquivo for chamado diretamente.
 if __name__ == "__main__":
     atualizar_plataforma()
