@@ -1,4 +1,4 @@
-# update_supabase.py (VERSÃO FINAL 2.4 - Estrutura Corrigida)
+# update_supabase.py (VERSÃO FINAL 3.0 - Otimizada com Triggers do Banco)
 
 import os
 import time
@@ -57,7 +57,7 @@ def obter_jogos_do_site():
                 
                 placar_casa, placar_fora = '-', '-'
 
-                # --- LÓGICA DE STATUS HIERÁRQUICA (v2.4) ---
+                # --- LÓGICA DE STATUS HIERÁRQUICA ---
                 
                 placar_el = card.find('div', class_='match__md_card--scoreboard')
                 status_el = card.find('div', class_='match__md_card--status')
@@ -114,6 +114,7 @@ def atualizar_plataforma():
     """
     Orquestra todo o processo: busca os jogos do site, conecta ao Supabase,
     e atualiza as partidas que foram finalizadas.
+    A pontuação dos utilizadores é calculada automaticamente por Triggers no Supabase.
     """
     url: str = os.environ.get("SUPABASE_URL")
     key: str = os.environ.get("SUPABASE_SERVICE_KEY")
@@ -136,11 +137,11 @@ def atualizar_plataforma():
 
     response = supabase.table('teams').select('id, name').execute()
     if response.data is None:
-        print("Erro ao buscar times do banco de dados.")
+        print("Erro ao buscar equipas do banco de dados.")
         return
     
     mapeamento_times = {time['name']: time['id'] for time in response.data}
-    print(f"-> {len(mapeamento_times)} times carregados do banco.")
+    print(f"-> {len(mapeamento_times)} equipas carregadas do banco.")
 
     partidas_para_atualizar = []
     for jogo in jogos_raspados:
@@ -153,11 +154,10 @@ def atualizar_plataforma():
                     'home_team_id': mapeamento_times[mandante],
                     'away_team_id': mapeamento_times[visitante],
                     'home_score': jogo['placar_mandante'],
-                    'away_score': jogo['placar_visitante'],
-                    'is_finished': True
+                    'away_score': jogo['placar_visitante']
                 })
             else:
-                print(f"Aviso: Jogo '{mandante} vs {visitante}' ignorado (time não encontrado no banco).")
+                print(f"Aviso: Jogo '{mandante} vs {visitante}' ignorado (equipa não encontrada no banco).")
     
     if not partidas_para_atualizar:
         print("\nNenhuma partida encerrada para atualizar no momento.")
@@ -166,31 +166,29 @@ def atualizar_plataforma():
     print(f"\n-> Encontradas {len(partidas_para_atualizar)} partidas com resultado para processar...")
     for partida in partidas_para_atualizar:
         try:
+            # Envia apenas os golos e altera o status para 'finished'
+            # O filtro 'status': 'scheduled' garante que só atualizamos jogos que ainda não terminaram.
             res = supabase.table('matches').update({
                 'home_score': partida['home_score'],
                 'away_score': partida['away_score'],
-                'is_finished': True
+                'status': 'finished'
             }).match({
                 'home_team_id': partida['home_team_id'],
                 'away_team_id': partida['away_team_id'],
-                'is_finished': False
+                'status': 'scheduled' 
             }).execute()
             
             if len(res.data) > 0:
                 match_id = res.data[0]['id']
-                print(f"  - Resultado da partida ID {match_id} atualizado. Disparando cálculo de pontos...")
+                print(f"  - Resultado da partida ID {match_id} atualizado.")
+                print("  - O banco de dados (Trigger) calculará os pontos dos utilizadores automaticamente em background!")
                 
-                rpc_res = supabase.rpc('update_user_points_for_match', {'match_id_param': match_id}).execute()
-                if rpc_res.error:
-                    raise rpc_res.error
-
-                print(f"  - Pontos para a partida ID {match_id} calculados com sucesso!")
         except Exception as e:
             print(f"Erro no processamento da partida: {e}")
 
-    print("\nProcesso de atualização finalizado!")
+    print("\nProcesso de atualização finalizado com sucesso!")
 
 # Ponto de entrada do script: garante que o código só será executado quando
-# o arquivo for chamado diretamente.
+# o ficheiro for chamado diretamente.
 if __name__ == "__main__":
     atualizar_plataforma()
