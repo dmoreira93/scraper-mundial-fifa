@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 # Carrega as variáveis de ambiente do arquivo .env
 load_dotenv()
 
-URL_SCRAPER = 'https://www.placardefutebol.com.br/mundial-clubes-fifa'
+URL_SCRAPER = 'https://www.placardefutebol.com.br/copa-do-mundo'
 
 def obter_jogos_do_site():
     """
