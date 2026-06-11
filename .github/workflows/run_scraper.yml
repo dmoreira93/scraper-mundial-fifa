@@ -5,13 +5,11 @@ on:
   # Permite que você rode manualmente pela aba "Actions" do GitHub
   workflow_dispatch:
   
-  # Define o agendamento (cron job) - Atenção: GitHub usa UTC (+3h em relação a Brasília)
+  # Define o agendamento (cron job) - GitHub utiliza o horário UTC
+  # '0,30 * * * *' significa: rodar aos minutos 0 e 30 de cada hora, todos os dias
   schedule:
-    # Roda a cada 30 minutos, das 16h00 às 20h30 (Horário de Brasília) -> 19h às 23h em UTC
-    - cron: '*/30 19-23 * * *'
-    
-    # Roda a cada 30 minutos, das 21h00 às 04h30 (Horário de Brasília) -> 00h às 07h em UTC
-    - cron: '*/30 0-7 * * *'
+    - cron: '0,30 * * * *' 
+    # Comentário adicionado para forçar o GitHub Actions a re-indexar este agendamento
 
 jobs:
   build-and-run:
@@ -27,7 +25,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11' # Pode usar a versão do Python que preferir
+          python-version: '3.11'
 
       # 3. Instala as dependências do seu arquivo requirements.txt
       - name: Install dependencies
