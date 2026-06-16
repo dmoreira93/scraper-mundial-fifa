@@ -302,3 +302,14 @@ def atualizar_plataforma():
 
 if __name__ == "__main__":
     atualizar_plataforma()
+
+def testar_notificacao_telegram():
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+    if token and chat_id:
+        print("-> Testando disparo de mensagem...")
+        # Envia uma mensagem de teste
+        import requests
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        resp = requests.post(url, json={"chat_id": chat_id, "text": "🤖 Robô do Bolão: Teste de conexão operacional!"})
+        print(f"-> Resposta do Telegram: {resp.status_code}")
