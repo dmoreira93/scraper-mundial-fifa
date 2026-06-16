@@ -259,8 +259,45 @@ def atualizar_plataforma():
                     'status': 'finished'
                 }).eq('id', match_id).execute()
 
-                linha_jogo = f"⚽ {partida['mandante_nome']} {partida['home_score']} x {partida['away_score']} {partida['visitante_nome']}"
-                print(f" - Atualizado no DB: {linha_jogo}")
+                # 3. Busca a galera que cravou o placar exato
+                cravadores = []
+                pool_id = None
+                
+                # Descobre o pool_id para não misturar competições
+                pool_res = supabase.table('pools').select('id').eq('championship_id', match_data.get('championship_id')).limit(1).execute()
+                if pool_res.data:
+                    pool_id = pool_res.data[0]['id']
+
+                if pool_id:
+                    try:
+                        # Busca na tabela de palpites quem acertou na mosca
+                        cravos_res = supabase.table("match_predictions") \
+                            .select("users_custom(name, email)") \
+                            .eq("match_id", match_id) \
+                            .eq("pool_id", pool_id) \
+                            .eq("home_score", partida['home_score']) \
+                            .eq("away_score", partida['away_score']) \
+                            .execute()
+
+                        if cravos_res.data:
+                            for palpite in cravos_res.data:
+                                user_data = palpite.get("users_custom")
+                                if user_data:
+                                    nome = user_data.get("name") or user_data.get("email", "Participante").split("@")[0]
+                                    cravadores.append(nome)
+                    except Exception as e:
+                        print(f"Aviso: Não foi possível buscar os cravadores do jogo {match_id}. Erro: {e}")
+
+                # 4. Monta o texto do jogo com o bônus da corneta
+                linha_jogo = f"⚽ <b>{partida['mandante_nome']} {partida['home_score']} x {partida['away_score']} {partida['visitante_nome']}</b>"
+                
+                if cravadores:
+                    lista_nomes = ", ".join(cravadores)
+                    linha_jogo += f"\n🎯 Olha só quem acertou em cheio: {lista_nomes}\n"
+                else:
+                    linha_jogo += f"\n🎯 Vish, ninguém cravou esse placar!\n"
+
+                print(f" - Atualizado no DB:\n{linha_jogo}")
                 jogos_atualizados_texto.append(linha_jogo)
 
         except Exception as e:
