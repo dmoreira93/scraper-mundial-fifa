@@ -17,12 +17,15 @@ load_dotenv()
 URL_SCRAPER = 'https://www.placardefutebol.com.br/copa-do-mundo'
 
 # --- CONFIGURAÇÕES DE SEGURANÇA ---
-# Sem "valor padrão". O script falha na hora se esquecer de por no GitHub Secrets.
-TELEGRAM_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
 def enviar_mensagem_telegram(mensagem):
     """ Envia o disparo HTTP para a API de Bots do Telegram. """
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+        print("⚠️ Credenciais do Telegram não configuradas no ambiente.")
+        return
+
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
@@ -40,71 +43,81 @@ def enviar_mensagem_telegram(mensagem):
 
 def disparar_resumo_telegram(supabase: Client, jogos_formatados: list, championship_id: str):
     """
-    Descobre o pool_id correto a partir do campeonato, busca o ranking e envia uma
-    mensagem única consolidada com os jogos da rodada e a parcial.
+    Descobre TODOS os bolões vinculados a este campeonato e envia
+    uma mensagem consolidada contendo o ranking de cada um.
     """
     try:
-        # 1. Busca o Bolão (pool_id) vinculado a este campeonato
-        pool_res = supabase.table('pools').select('id').eq('championship_id', championship_id).limit(1).execute()
+        # 1. Busca os Bolões vinculados a este campeonato (usa str().strip() para segurança total)
+        championship_id_clean = str(championship_id).strip()
+        pool_res = supabase.table('pools').select('id, name').eq('championship_id', championship_id_clean).execute()
         
         if not pool_res.data:
-            print(f"Aviso: Nenhum bolão encontrado para o campeonato {championship_id}.")
+            print(f"Aviso: Nenhum bolão encontrado para o campeonato {championship_id_clean}.")
+            print("Dica: Se o bolão for is_public=false, verifique se a SUPABASE_SERVICE_KEY no GitHub Actions é realmente a Service Role (e não a Anon Key).")
             return
             
-        pool_id = pool_res.data[0]['id']
+        # O sistema agora itera sobre todos os bolões associados a esse campeonato
+        for pool in pool_res.data:
+            pool_id = pool['id']
+            pool_name = pool['name']
 
-        # 2. Busca o Ranking
-        res_ranking = supabase.table('participations') \
-            .select('points, exact_scores, users_custom(name, is_admin, is_ai)') \
-            .eq('pool_id', pool_id) \
-            .execute()
+            # 2. Busca o Ranking individual daquele bolão específico
+            res_ranking = supabase.table('participations') \
+                .select('points, exact_scores, users_custom(name, is_admin, is_ai)') \
+                .eq('pool_id', pool_id) \
+                .execute()
 
-        if not res_ranking.data:
-            print("Aviso: Nenhum dado de participação encontrado para montar o ranking.")
-            return
+            if not res_ranking.data:
+                print(f"Aviso: Nenhum participante cadastrado ou computado no bolão: {pool_name}.")
+                continue
 
-        participantes_filtrados = []
-        for item in res_ranking.data:
-            user_info = item.get('users_custom', {})
-            if user_info and not user_info.get('is_admin') and not user_info.get('is_ai'):
-                participantes_filtrados.append({
-                    'name': user_info.get('name', 'Participante'),
-                    'points': item.get('points', 0),
-                    'exact_scores': item.get('exact_scores', 0)
-                })
+            participantes_filtrados = []
+            for item in res_ranking.data:
+                user_info = item.get('users_custom', {})
+                if user_info and not user_info.get('is_admin') and not user_info.get('is_ai'):
+                    participantes_filtrados.append({
+                        'name': user_info.get('name', 'Participante'),
+                        'points': item.get('points', 0),
+                        'exact_scores': item.get('exact_scores', 0)
+                    })
 
-        # Ordena: 1º Pontos, 2º Cravadas
-        participantes_filtrados.sort(key=lambda x: (x['points'], x['exact_scores']), reverse=True)
+            # Ordena: 1º Pontos, 2º Cravadas
+            participantes_filtrados.sort(key=lambda x: (x['points'], x['exact_scores']), reverse=True)
 
-        if len(participantes_filtrados) == 0:
-            return
+            if len(participantes_filtrados) == 0:
+                continue
 
-        top_3 = participantes_filtrados[:3]
-        lanterna = participantes_filtrados[-1]
+            top_3 = participantes_filtrados[:3]
+            lanterna = participantes_filtrados[-1]
 
-        # 3. Monta o Layout da Mensagem Única
-        mensagem_linhas = [
-            "🏆 <b>RESULTADOS PROCESSADOS</b> 🏆\n"
-        ]
-        
-        # Adiciona a lista de jogos recém atualizados
-        mensagem_linhas.extend(jogos_formatados)
-        mensagem_linhas.append("\n📊 <b>PARCIAIS DO BOLÃO</b> 📊")
-        
-        medalhas = ["🥇", "🥈", "🥉"]
-        for i, participante in enumerate(top_3):
-            medalha = medalhas[i] if i < len(medalhas) else "🔹"
-            mensagem_linhas.append(f"{medalha} {participante['name']} — {participante['points']} pts")
+            # 3. Monta o Layout da Mensagem Única
+            mensagem_linhas = [
+                "🏆 <b>RESULTADOS PROCESSADOS</b> 🏆\n"
+            ]
+            
+            # Adiciona a lista de jogos recém atualizados
+            mensagem_linhas.extend(jogos_formatados)
+            
+            # Adiciona o título referenciando de qual bolão estamos mostrando os pontos
+            mensagem_linhas.append(f"\n📊 <b>PARCIAIS: {pool_name.upper()}</b> 📊")
+            
+            medalhas = ["🥇", "🥈", "🥉"]
+            for i, participante in enumerate(top_3):
+                medalha = medalhas[i] if i < len(medalhas) else "🔹"
+                mensagem_linhas.append(f"{medalha} {participante['name']} — {participante['points']} pts")
 
-        mensagem_linhas.append("\n🦉 <b>Lanterna:</b>")
-        mensagem_linhas.append(f"🚨 {lanterna['name']} — {lanterna['points']} pts")
-        mensagem_linhas.append("\n🏃‍♂️ Acesse o app para conferir!")
+            if len(participantes_filtrados) > 3:
+                mensagem_linhas.append("\n🦉 <b>Lanterna:</b>")
+                mensagem_linhas.append(f"🚨 {lanterna['name']} — {lanterna['points']} pts")
+                
+            mensagem_linhas.append("\n🏃‍♂️ Acesse o app para conferir!")
 
-        # Dispara
-        enviar_mensagem_telegram("\n".join(mensagem_linhas))
+            # Dispara para o telegram
+            enviar_mensagem_telegram("\n".join(mensagem_linhas))
 
     except Exception as err:
         print(f"Erro na geração do layout do Telegram: {err}")
+
 
 def obter_jogos_do_site():
     print("-> Iniciando o scraper para buscar jogos...")
@@ -172,13 +185,13 @@ def obter_jogos_do_site():
                             placar_casa = scores[0].get_text(strip=True)
                             placar_fora = scores[1].get_text(strip=True)
                             
-                    lista_jogos.append({
-                        'mandante': time_casa,
-                        'visitante': time_fora,
-                        'placar_mandante': placar_casa,
-                        'placar_visitante': placar_fora,
-                        'status': status
-                    })
+                lista_jogos.append({
+                    'mandante': time_casa,
+                    'visitante': time_fora,
+                    'placar_mandante': placar_casa,
+                    'placar_visitante': placar_fora,
+                    'status': status
+                })
             except Exception as e:
                 continue
         return lista_jogos
@@ -261,30 +274,31 @@ def atualizar_plataforma():
 
                 # 3. Busca a galera que cravou o placar exato
                 cravadores = []
-                pool_id = None
                 
-                # Descobre o pool_id para não misturar competições
-                pool_res = supabase.table('pools').select('id').eq('championship_id', match_data.get('championship_id')).limit(1).execute()
-                if pool_res.data:
-                    pool_id = pool_res.data[0]['id']
+                # Para não perder ninguém, busca os bolões deste campeonato
+                campeonato_limpo = str(match_data.get('championship_id')).strip()
+                pool_res = supabase.table('pools').select('id').eq('championship_id', campeonato_limpo).execute()
+                pool_ids = [p['id'] for p in pool_res.data] if pool_res.data else []
 
-                if pool_id:
+                if pool_ids:
                     try:
-                        # Busca na tabela de palpites quem acertou na mosca
+                        # Busca na tabela de palpites quem acertou na mosca cruzando TODOS os bolões possíveis
                         cravos_res = supabase.table("match_predictions") \
                             .select("users_custom(name, email)") \
                             .eq("match_id", match_id) \
-                            .eq("pool_id", pool_id) \
+                            .in_("pool_id", pool_ids) \
                             .eq("home_score", partida['home_score']) \
                             .eq("away_score", partida['away_score']) \
                             .execute()
 
                         if cravos_res.data:
+                            nomes_unicos = set()
                             for palpite in cravos_res.data:
                                 user_data = palpite.get("users_custom")
                                 if user_data:
                                     nome = user_data.get("name") or user_data.get("email", "Participante").split("@")[0]
-                                    cravadores.append(nome)
+                                    nomes_unicos.add(nome)
+                            cravadores = list(nomes_unicos)
                     except Exception as e:
                         print(f"Aviso: Não foi possível buscar os cravadores do jogo {match_id}. Erro: {e}")
 
