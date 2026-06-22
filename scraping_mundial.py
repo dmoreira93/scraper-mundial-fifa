@@ -1,4 +1,4 @@
-# update_supabase.py (VERSÃO FINAL 4.0 - Integrado com Notificações do Telegram)
+# update_supabase.py (VERSÃO FINAL 4.1 - Proteção de Jogo Interrompido)
 
 import os
 import time
@@ -19,8 +19,6 @@ load_dotenv()
 URL_SCRAPER = 'https://www.placardefutebol.com.br/copa-do-mundo'
 
 # --- CONFIGURAÇÕES DO TELEGRAM ---
-# O ideal é salvar estas duas chaves também nas configurações de Secrets do GitHub Actions!
-# Se for rodar local, adicione-as no arquivo .env como TELEGRAM_BOT_TOKEN e TELEGRAM_CHAT_ID
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "8637465344:AAH4wiKxyFEbU-cu7hsNkHdmyACwVa7vSak")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "-1004342102310")
 
@@ -32,7 +30,7 @@ def enviar_mensagem_telegram(mensagem):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
-        "text": mensagem,
+        "text": message,
         "parse_mode": "HTML"
     }
     try:
@@ -51,7 +49,6 @@ def buscar_e_formatar_ranking(supabase: Client, pool_id: str, mandante: str, vis
     """
     try:
         # Busca os dados ordenados por pontos (decrescente) e desempate por cravadas (exact_scores)
-        # Ajustamos os filtros 'is_admin' e 'is_ai' conforme as regras das tabelas customizadas
         res_ranking = supabase.table('participations') \
             .select('points, exact_scores, users_custom(name, is_admin, is_ai)') \
             .eq('pool_id', pool_id) \
@@ -150,7 +147,9 @@ def obter_jogos_do_site():
                 time_casa = time_casa_el.get_text(strip=True)
                 time_fora = time_fora_el.get_text(strip=True)
                 
-                placar_casa, placar_fora = '-', '-'
+                # 🟢 DEFINE VALORES PADRÃO (Impede quebra do dicionário final se o jogo for interrompido/suspenso)
+                placar_casa = None
+                placar_fora = None
 
                 # --- LÓGICA DE STATUS HIERÁRQUICA ---
                 placar_el = card.find('div', class_='match__md_card--scoreboard')
@@ -164,6 +163,8 @@ def obter_jogos_do_site():
                 
                 if 'suspenso' in status_text:
                     status = 'Suspenso'
+                elif 'interrompido' in status_text:
+                    status = 'interrompido'
                 elif any(termo in status_text for termo in TEXTOS_DE_JOGO_FINALIZADO):
                     status = 'Encerrado'
                 elif 'intervalo' in status_text:
@@ -177,6 +178,7 @@ def obter_jogos_do_site():
                 else:
                     status = 'Não definido'
 
+                # Captura os gols somente se o status for 'Encerrado' legitimamente
                 if status == 'Encerrado' and placar_el:
                     scores = placar_el.find_all('b')
                     if len(scores) >= 2:
@@ -194,8 +196,8 @@ def obter_jogos_do_site():
                     'placar_visitante': placar_fora,
                     'status': status
                 })
-            except Exception as e:
-                print(f"Aviso: Erro ao processar um card de jogo: {e}")
+            except Exception as card_e:
+                print(f"Aviso: Erro ao processar um card de jogo: {card_e}")
                 continue
         
         return lista_jogos
