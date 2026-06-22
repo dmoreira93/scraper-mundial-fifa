@@ -1,8 +1,5 @@
-<<<<<<< HEAD
-# update_supabase.py (VERSÃO FINAL 4.1 - Proteção de Jogo Interrompido)
+# update_supabase.py (VERSÃO FINAL 4.2 - Proteção de Jogo Interrompido & Multi-Bolão)
 
-=======
->>>>>>> c482b36c0221b4bce672c3fa37b91d87ccb1e051
 import os
 import time
 from datetime import datetime
@@ -21,15 +18,9 @@ load_dotenv()
 
 URL_SCRAPER = 'https://www.placardefutebol.com.br/copa-do-mundo'
 
-<<<<<<< HEAD
 # --- CONFIGURAÇÕES DO TELEGRAM ---
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "8637465344:AAH4wiKxyFEbU-cu7hsNkHdmyACwVa7vSak")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "-1004342102310")
-=======
-# --- CONFIGURAÇÕES DE SEGURANÇA ---
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
->>>>>>> c482b36c0221b4bce672c3fa37b91d87ccb1e051
 
 def enviar_mensagem_telegram(mensagem):
     """ Envia o disparo HTTP para a API de Bots do Telegram. """
@@ -40,7 +31,7 @@ def enviar_mensagem_telegram(mensagem):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
-        "text": message,
+        "text": mensagem,
         "parse_mode": "HTML"
     }
     try:
@@ -58,17 +49,9 @@ def disparar_resumo_telegram(supabase: Client, jogos_formatados: list, champions
     uma mensagem consolidada contendo o ranking de cada um.
     """
     try:
-<<<<<<< HEAD
-        # Busca os dados ordenados por pontos (decrescente) e desempate por cravadas (exact_scores)
-        res_ranking = supabase.table('participations') \
-            .select('points, exact_scores, users_custom(name, is_admin, is_ai)') \
-            .eq('pool_id', pool_id) \
-            .execute()
-=======
         # 1. Busca os Bolões vinculados a este campeonato (usa str().strip() para segurança total)
         championship_id_clean = str(championship_id).strip()
         pool_res = supabase.table('pools').select('id, name').eq('championship_id', championship_id_clean).execute()
->>>>>>> c482b36c0221b4bce672c3fa37b91d87ccb1e051
         
         if not pool_res.data:
             print(f"Aviso: Nenhum bolão encontrado para o campeonato {championship_id_clean}.")
@@ -169,17 +152,12 @@ def obter_jogos_do_site():
                 
                 time_casa = time_casa_el.get_text(strip=True)
                 time_fora = time_fora_el.get_text(strip=True)
-<<<<<<< HEAD
                 
-                # 🟢 DEFINE VALORES PADRÃO (Impede quebra do dicionário final se o jogo for interrompido/suspenso)
+                # 🟢 DEFINE VALORES PADRÃO (Impede quebra do dicionário se o jogo for interrompido/suspenso)
                 placar_casa = None
                 placar_fora = None
-
-                # --- LÓGICA DE STATUS HIERÁRQUICA ---
-=======
-                placar_casa, placar_fora = '-', '-'
                 
->>>>>>> c482b36c0221b4bce672c3fa37b91d87ccb1e051
+                # --- LÓGICA DE STATUS HIERÁRQUICA ---
                 placar_el = card.find('div', class_='match__md_card--scoreboard')
                 status_el = card.find('div', class_='match__md_card--status')
                 live_el = card.find('div', class_='match__md_card--live')
@@ -223,12 +201,8 @@ def obter_jogos_do_site():
                     'placar_visitante': placar_fora,
                     'status': status
                 })
-<<<<<<< HEAD
             except Exception as card_e:
                 print(f"Aviso: Erro ao processar um card de jogo: {card_e}")
-=======
-            except Exception as e:
->>>>>>> c482b36c0221b4bce672c3fa37b91d87ccb1e051
                 continue
         return lista_jogos
     finally:
